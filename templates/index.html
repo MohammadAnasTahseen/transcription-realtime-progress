@@ -1,0 +1,75 @@
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload Audio for Transcription</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    #progress-container {
+      width: 100%;
+      background: #eee;
+      margin-top: 20px;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    #progress-bar {
+      width: 0%;
+      height: 25px;
+      background: green;
+      color: white;
+      text-align: center;
+
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <h1>Upload an audio file to transcribe</h1>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul>
+        {% for msg in messages %}
+          <li>{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="audio" accept="audio/*" required>
+    <button type="submit">Upload & Transcribe</button>
+  </form>
+
+  <!-- Progress Bar -->
+  <div id="progress-container">
+    <div id="progress-bar">0%</div>
+  </div>
+
+
+  
+
+
+  <script>
+    const socket = io();  // instead of hardcoding
+ // Connect to Flask-SocketIO server
+
+  socket.on('connect', () => {
+    console.log("✅ Connected to server via WebSocket");
+  });
+
+    socket.on('progress_update', data => {
+      console.log('Progress update:', data);
+      const progress = data.progress;
+      const bar = document.getElementById('progress-bar');
+
+      bar.style.width = progress + '%';
+      bar.textContent = progress + '%';
+    });
+  </script>
+</body>
+</html>
+
