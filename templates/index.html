@@ -1,6 +1,3 @@
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,7 +18,6 @@
       background: green;
       color: white;
       text-align: center;
-
       transition: width 0.3s;
     }
   </style>
@@ -44,32 +40,62 @@
     <button type="submit">Upload & Transcribe</button>
   </form>
 
+  <!-- Hidden input to store session ID -->
+  <input type="hidden" id="session_id_input" value="{{ session_id }}">
+
   <!-- Progress Bar -->
   <div id="progress-container">
     <div id="progress-bar">0%</div>
   </div>
 
-
-  
-
+  <div id="transcription_result">
+    <h2>Transcription Result:</h2>
+    <div id="transcription_text_container"></div>
+  </div>
 
   <script>
-    const socket = io();  // instead of hardcoding
- // Connect to Flask-SocketIO server
+    // Get the session ID from the hidden input field
+    const session_id = document.getElementById('session_id_input').value;
+    console.log("Session ID:", session_id);
 
-  socket.on('connect', () => {
-    console.log("✅ Connected to server via WebSocket");
-  });
+    // Initialize the WebSocket connection
+    const socket = io();
 
+    // When connected, join the WebSocket room based on the session ID
+    socket.on('connect', () => {
+      console.log("✅ Connected to server via WebSocket");
+
+      // Join the session-specific room
+      socket.emit('join', { session_id });
+    });
+
+    // Listen for progress updates
     socket.on('progress_update', data => {
-      console.log('Progress update:', data);
+      console.log("Received progress update:", data);
+      if (data.session_id !== session_id) return; // Ensure this is the correct session
+
       const progress = data.progress;
       const bar = document.getElementById('progress-bar');
+      const transcription_result = data.text;
+      const container = document.getElementById('transcription_text_container');
 
+      // Update the progress bar
       bar.style.width = progress + '%';
       bar.textContent = progress + '%';
+
+      // Handle transcription text and add to the container
+      if (transcription_result && transcription_result.trim() !== '') {
+        const newText = document.createElement('p');
+        newText.textContent = transcription_result;
+        container.appendChild(newText);
+      }
+
+      // When transcription is complete
+      if (progress === 100) {
+        bar.textContent = 'Transcription complete!';
+        bar.style.backgroundColor = 'blue'; // Change color to blue when complete
+      }
     });
   </script>
 </body>
 </html>
-

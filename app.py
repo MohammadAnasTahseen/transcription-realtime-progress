@@ -1,6 +1,7 @@
+from uuid import uuid4
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_socketio import SocketIO, emit
-from celery import Celery
+from celery import Celery, uuid
 from werkzeug.utils import secure_filename
 import os
 import threading
@@ -25,12 +26,9 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 @app.route('/transcribe', methods=['GET', 'POST'])
 def index():
-    print("from index")
     if request.method == 'POST':
-        print("from post")
         file = request.files.get('audio')
         if not file or file.filename == '':
-            print("no file")
             flash('No file selected')
             return redirect(request.url)
 
@@ -38,15 +36,27 @@ def index():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
 
-        # Start transcription
-        print("calling transcribe_in_chunks")
-        
-        transcribe_in_chunks.delay(file_path)
+        # 🔥 Generate a session ID
+        session_id = str(uuid4())
+
+        print(f"with session ID #################{session_id}")
+
+        # Start transcription task and pass session_id
+        transcribe_in_chunks.delay(file_path, session_id)
 
         flash("✅ File uploaded! Transcription started.")
-        return redirect(url_for('index'))
+        return redirect(url_for('index', session_id=session_id))
 
-    return render_template('index.html')
+    # If GET, grab session_id from query params
+    session_id = request.args.get('session_id', str(uuid4()))
+
+
+    print(f"Session ID##############: {session_id}")
+    return render_template('index.html',session_id=session_id)
+
+
+
+
 
 
 # Listen to RabbitMQ messages and emit via WebSocket
@@ -57,8 +67,11 @@ def rabbitmq_listener():
 
     def callback(ch, method, properties, body):
         data = json.loads(body)
-        print(f"📡 Received progress update: {data}")
-        socketio.emit('progress_update', data)
+        session_id = data.get("session_id")
+        print(f"📡 Received progress update for session {session_id}: {data}")
+
+        if session_id:
+            socketio.emit('progress_update', data, room=session_id)
 
     channel.basic_consume(queue='transcription_progress', on_message_callback=callback, auto_ack=True)
     print("🚀 WebSocket listener started.")
@@ -72,6 +85,17 @@ def start_background_listener():
 @socketio.on('connect')
 def handle_connect():
     print("✅ Client connected")
+
+
+
+from flask_socketio import join_room
+
+@socketio.on('join')
+def on_join(data):
+    session_id = data.get('session_id')
+    if session_id:
+        join_room(session_id)
+        print(f"🧩 Client joined room {session_id}")
 
 
 # Run app

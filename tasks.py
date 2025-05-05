@@ -22,15 +22,6 @@ redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
 
 
-# @celery_app.task(name="custom_add_task")
-# def add():
-#     sum = 0
-#     for i in range(11):
-#         print("counting numbers ",i)
-#         sum += i
-
-#     print("#######################",sum)
-#     return sum
 
 
 
@@ -41,9 +32,8 @@ from celery import shared_task
 
 @shared_task
 
-def transcribe_in_chunks(file_path):
-
-    print("fromtaslsssssssssssssssss")
+def transcribe_in_chunks(file_path, session_id):
+    print("📥 Starting transcription task")
     chunks = split_audio(file_path)
     total_chunks = len(chunks)
 
@@ -53,41 +43,32 @@ def transcribe_in_chunks(file_path):
             result = model.transcribe(audio)
             text = " ".join([seg["text"] for seg in result["segments"]])
 
-            # Send progress to RabbitMQ
+            # ✅ Send progress to RabbitMQ with session_id
             progress = int(((idx + 1) / total_chunks) * 100)
             send_progress_to_rabbitmq({
                 "progress": progress,
                 "chunk": idx + 1,
                 "total": total_chunks,
                 "filename": os.path.basename(file_path),
-                
+                "text": text,
+                "session_id": session_id
             })
-            # send_progress_to_redis({
-            #     "progress": progress,
-            #     "chunk": idx + 1,
-            #     "total": total_chunks,
-            #     "filename": os.path.basename(file_path)
-            # })
 
-
-            print("🧠 Chunk Transcription:")
-            print(text)
+            print(f"🧠 Chunk {idx + 1}/{total_chunks} Transcribed: {text}")
             print("-" * 60)
 
         except Exception as e:
-            print(f"❌ Error transcribing {chunk}: {e}")
+            print(f"❌ Error transcribing chunk {idx + 1}: {e}")
 
         finally:
             try:
                 os.remove(chunk)
                 print(f"🗑️ Removed chunk: {chunk}")
             except Exception as e:
-                print(f"⚠️ Failed to delete {chunk}: {e}")
+                print(f"⚠️ Failed to delete chunk {chunk}: {e}")
 
 
-
-
-
+# 🔊 Utility: Split audio into chunks
 def split_audio(file_path, chunk_duration_ms=30_000):
     audio = AudioSegment.from_file(file_path)
     chunks = []
@@ -100,18 +81,22 @@ def split_audio(file_path, chunk_duration_ms=30_000):
     return chunks
 
 
-
+# 📨 Send progress to RabbitMQ
 def send_progress_to_rabbitmq(progress_data):
     try:
-        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
         channel = connection.channel()
-        channel.queue_declare(queue='transcription_progress')
+        channel.queue_declare(queue="transcription_progress")
+
         channel.basic_publish(
-            exchange='',
-            routing_key='transcription_progress',
+            exchange="",
+            routing_key="transcription_progress",
             body=json.dumps(progress_data)
         )
         connection.close()
+
+        print(f"📤 Sent progress update: {progress_data['progress']}% (Session: {progress_data['session_id']})")
+
     except Exception as e:
         print(f"❌ Failed to send progress to RabbitMQ: {e}")
 
